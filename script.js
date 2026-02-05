@@ -1,4 +1,4 @@
- const { useState, useEffect, useMemo, useCallback, useRef } = React;
+     const { useState, useEffect, useMemo, useCallback, useRef } = React;
       const { createRoot } = ReactDOM;
       
       const kebabToPascal = (str) => 
@@ -91,6 +91,9 @@
       const Minus = (p) => <Icon name="minus" {...p} />;
       const Type = (p) => <Icon name="type" {...p} />;
       const Sheet = (p) => <Icon name="sheet" {...p} />;
+      const ShieldAlert = (p) => <Icon name="shield-alert" {...p} />;
+      const Fingerprint = (p) => <Icon name="fingerprint" {...p} />;
+      const ShieldCheck = (p) => <Icon name="shield-check" {...p} />;
 
       // --- CONSTANTS ---
       const WORKER_URL = "https://api-professor-dashboard.brendonhbrcc.workers.dev/";
@@ -117,10 +120,27 @@
         { id: 'practice', name: 'Práticas Militares e Legislação', maxScore: 4 },
       ];
 
-      const EVALUATION_MODALITIES = [
-        { id: 'eval_basic', name: 'Avaliação Básica', maxScore: 10 },
-        { id: 'eval_adv', name: 'Avaliação Avançada', maxScore: 10 }
-      ];
+      // --- TOAST NOTIFICATIONS ---
+      const ToastContainer = ({ toasts, removeToast }) => {
+          return (
+              <div className="fixed top-24 right-4 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+                  {toasts.map(toast => (
+                      <div key={toast.id} className={`pointer-events-auto bg-white dark:bg-[#1a231d] text-slate-800 dark:text-white px-5 py-4 rounded-sm shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] flex items-start gap-4 border-l-4 animate-slide-in ${toast.type === 'success' ? 'border-green-500' : toast.type === 'error' ? 'border-red-500' : 'border-blue-500'}`}>
+                          <div className={`mt-0.5 shrink-0 ${toast.type === 'success' ? 'text-green-500' : toast.type === 'error' ? 'text-red-500' : 'text-blue-500'}`}>
+                              {toast.type === 'success' ? <CheckCircle2 size={20} /> : toast.type === 'error' ? <AlertTriangle size={20} /> : <Info size={20} />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                              <h4 className={`text-xs font-bold uppercase tracking-widest mb-1 ${toast.type === 'success' ? 'text-green-600 dark:text-green-400' : toast.type === 'error' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>{toast.title}</h4>
+                              <p className="text-xs font-medium leading-relaxed opacity-90 break-words">{toast.message}</p>
+                          </div>
+                          <button onClick={() => removeToast(toast.id)} className="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors">
+                              <X size={16} />
+                          </button>
+                      </div>
+                  ))}
+              </div>
+          );
+      };
 
       // --- SERVICES ---
       const parseCSVLine = (text) => {
@@ -155,6 +175,26 @@
         } catch (error) {
           console.error("Fetch Error Detail:", error);
           throw new Error('Erro ao buscar dados do Worker');
+        }
+      };
+
+      const getForumUsername = async () => {
+        try {
+            const response = await fetch("/forum", { cache: "no-store" });
+            const html = await response.text();
+            
+            // Regex to find username in forum source code
+            const regex = /_userdata\["username"\]\s*=\s*"([^"]+)"/;
+            const match = html.match(regex);
+            
+            if (match && match[1]) {
+                return match[1];
+            } else {
+                return null;
+            }
+        } catch (err) {
+            console.error("Erro ao buscar username:", err);
+            return null;
         }
       };
 
@@ -194,8 +234,14 @@
           const rows = await fetchCSV(HISTORY_GID);
           if (!rows || rows.length < 2) return [];
           return rows.slice(1).map(row => ({
-            endTime: row[0] || '', startTime: row[1] || '', className: row[2] || '', professor: row[3] || '',
-            students: row[4] || '', verdict: row[5] || '', score: row[7] || '', adminActivity: row[8] || ''
+            endTime: row[0] || '', 
+            startTime: row[1] || '', 
+            className: row[2] || '', 
+            professor: row[4] || '', 
+            students: row[5] || '', 
+            mpSent: row[6] || '', 
+            verdict: row[8] || '', 
+            score: row[9] || '' 
           })).filter(entry => entry.className !== ''); 
         } catch (error) {
           console.error("History Fetch Error:", error);
@@ -204,6 +250,7 @@
       };
 
       const sendPrivateMessage = async (username, subject, message) => {
+        // ... (implementation same as previous)
         try {
             const composeResp = await fetch('/privmsg?mode=post', {
                 credentials: 'same-origin',
@@ -214,25 +261,18 @@
             const html = await composeResp.text();
             const dom = new DOMParser().parseFromString(html, 'text/html');
             
-            // Procura o formulário de forma mais abrangente
             const form = dom.querySelector('form[action*="/privmsg"]');
-            if (!form) {
-                console.error("Formulário de MP não encontrado.");
-                return false;
-            }
+            if (!form) return false;
 
             const formData = new FormData();
             let hasUsernameArrayField = false;
 
-            // Copia todos os inputs ocultos e visíveis necessários
             form.querySelectorAll('input, textarea, select').forEach(el => {
                 const name = el.getAttribute('name');
                 if (!name || name === 'message' || name === 'subject') return;
                 if (name === 'username[]') hasUsernameArrayField = true;
                 if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) return;
-                // Ignora o botão de submit original para evitar duplicidade ou valores incorretos
                 if (el.type === 'submit') return;
-                
                 formData.append(name, el.value || '');
             });
 
@@ -242,8 +282,6 @@
             formData.set('subject', subject);
             formData.set('message', message);
             
-            // Garante que o campo 'post' seja enviado com o valor esperado pelo phpBB (geralmente 'Enviar' ou 'Submit')
-            // Verifica se existe um botão de submit com name="post" e usa seu value, senão usa "Enviar"
             const submitBtn = form.querySelector('input[type="submit"][name="post"]');
             formData.set('post', submitBtn ? submitBtn.value : 'Enviar');
 
@@ -254,18 +292,11 @@
                 credentials: 'same-origin'
             });
 
-            if (!sendResp.ok) {
-                 console.error(`Erro no envio da MP: ${sendResp.status}`);
-                 return false;
-            }
+            if (!sendResp.ok) return false;
             
             const textLower = (await sendResp.text()).toLowerCase();
-            if (textLower.includes('não existe') || textLower.includes('flood')) {
-                console.error("Erro de Flood ou Usuário inexistente.");
-                return false;
-            }
+            if (textLower.includes('não existe') || textLower.includes('flood')) return false;
 
-            console.log(`MP enviada para: ${username}`);
             return true;
         } catch (error) {
             console.error("Exceção ao enviar MP:", error);
@@ -274,8 +305,8 @@
       };
 
       const postToForumTopic = async (topicId, message) => {
+        // ... (implementation same as previous)
         try {
-            // 1. Acessa a página de "Responder" para pegar tokens de segurança (auth, lt, rs)
             const outputUrl = `/post?t=${topicId}&mode=reply`;
             const loadResp = await fetch(outputUrl, {
                 credentials: 'same-origin',
@@ -287,29 +318,23 @@
             const html = await loadResp.text();
             const dom = new DOMParser().parseFromString(html, 'text/html');
             
-            // Busca o formulário de postagem (geralmente action="/post")
             const form = dom.querySelector('form[action="/post"]');
             if (!form) throw new Error("Formulário de postagem não encontrado no DOM.");
 
-            // 2. Prepara os dados (copia inputs ocultos essenciais)
             const formData = new FormData();
             form.querySelectorAll('input, textarea, select').forEach(el => {
                 const name = el.getAttribute('name');
                 if (!name) return;
-                // Ignora a mensagem vazia do form original e botões de preview
                 if (name === 'message' || name === 'preview') return;
                 if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) return;
-                
                 formData.append(name, el.value || '');
             });
 
-            // 3. Adiciona os dados obrigatórios
             formData.set('message', message);
             formData.set('t', topicId);
             formData.set('mode', 'reply');
-            if (!formData.has('post')) formData.set('post', 'Enviar'); // Garante que post tenha valor
+            if (!formData.has('post')) formData.set('post', 'Enviar'); 
 
-            // 4. Envia a postagem
             const sendResp = await fetch('/post', {
                 method: 'POST',
                 body: formData,
@@ -318,7 +343,6 @@
 
             if (!sendResp.ok) throw new Error(`Erro na requisição POST (Status: ${sendResp.status})`);
 
-            // 5. Verifica se houve erro de Flood ou outro erro no HTML de retorno
             const respText = (await sendResp.text()).toLowerCase();
             
             if (respText.includes('flood')) {
@@ -331,23 +355,19 @@
             return true;
 
         } catch (error) {
-            // Repassa o erro para que o seu loop (que tem catch) possa tratar o Flood
             throw error;
         }
       };
 
       const postToSheet = async (dataPayload) => {
+          // ... (implementation same as previous)
           try {
-              // Wrap the data payload in the structure expected by the Google Apps Script
               const body = {
                   action: "append_row",
                   gid: "0",
                   data: dataPayload
               };
 
-              // Sends data directly to the Google Apps Script Web App
-              // Using text/plain for the content type is crucial for Google Apps Script Web Apps 
-              // to avoid CORS preflight OPTIONS requests which often fail or are rejected.
               const response = await fetch(MACRO_URL, {
                   method: 'POST',
                   headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -360,14 +380,11 @@
               return true;
           } catch (error) {
               console.error("Erro ao postar na planilha:", error);
-              // Since GAS Web App responses are often opaque in no-cors mode (or difficult with CORS), 
-              // we might still treat it as a potential success if the fetch didn't throw, 
-              // but here we throw to let the UI handle it.
               throw error;
           }
       };
 
-      // --- LOGIC HELPERS ---
+      // --- LOGIC HELPERS --- (Same as previous)
       const generateId = () => Math.random().toString(36).substr(2, 9);
       const parseRowsToBlocks = (rows) => {
         let i = 0;
@@ -412,7 +429,7 @@
         return text.replace(/<[^>]+>/g, '');
       };
 
-      // --- RICH TEXT RENDERER ---
+      // --- RICH TEXT RENDERER --- (Same as previous)
       const RichText = ({ text, className }) => {
         if (!text) return null;
 
@@ -465,6 +482,7 @@
       );
       
       const Slideshow = () => {
+        // ... (Same as previous)
         const [current, setCurrent] = useState(0);
         const [slidesData, setSlidesData] = useState([]);
         const [loading, setLoading] = useState(true);
@@ -522,6 +540,7 @@
       };
 
       const NoticeBoard = () => {
+          // ... (Same as previous)
           const [data, setData] = useState({ title: 'Carregando...', message: '...' });
           
           useEffect(() => {
@@ -708,6 +727,7 @@
       };
 
       const PrivateMessage = ({ block, status, onInteract }) => {
+        // ... (Same as previous)
         const [isOpen, setIsOpen] = useState(false); 
         const [nickname, setNickname] = useState(''); 
         const [sendState, setSendState] = useState('idle');
@@ -778,6 +798,7 @@
       };
 
       const Spoiler = ({ block, childrenNodes }) => {
+        // ... (Same as previous)
         const [isOpen, setIsOpen] = useState(false);
         const isOuter = block.level === 1;
         const title = block.content && block.content.trim() !== '' ? block.content : (isOuter ? 'Conteúdo Classificado' : 'Informação Adicional');
@@ -807,6 +828,7 @@
       };
 
       const ContentRenderer = ({ blocks, onSkipWarning, currentUser, textZoom = 0 }) => {
+        // ... (Same as previous - massive block)
         const processedBlocks = useMemo(() => {
             const groupNodes = (nodes) => {
                 if (!nodes) return [];
@@ -1011,7 +1033,8 @@
         return <div className="w-full">{processedBlocks.map(block => renderBlock(block))}</div>;
       };
 
-      const ClassFeedbackForm = ({ professor, initialClassId, initialStartTime, initialStudent, initialVerdict, initialComments, initialScore }) => {
+      const ClassFeedbackForm = ({ professor, initialClassId, initialStartTime, initialStudent, initialVerdict, initialComments, initialScore, addToast }) => {
+        // ... (Same as previous)
         const [selectedType, setSelectedType] = useState(CLASS_TYPES_FEEDBACK[0]); 
         const [isAdminActivity, setIsAdminActivity] = useState(false); 
         const [students, setStudents] = useState(''); 
@@ -1019,7 +1042,6 @@
         const [individualScores, setIndividualScores] = useState({});
         const [individualComments, setIndividualComments] = useState({});
         const [startTime, setStartTime] = useState(new Date());
-        const [isProcessing, setIsProcessing] = useState(false);
         const [isSendingSheet, setIsSendingSheet] = useState(false);
 
         const studentList = useMemo(() => {
@@ -1066,41 +1088,9 @@
                 });
             }
         }, [studentList, initialVerdict, initialComments, initialScore, isAdminActivity]);
-
-        const formatReport = () => { 
-            let report = "";
-            const now = new Date();
-
-            const typeName = isAdminActivity ? `${selectedType.name} (Atividade)` : selectedType.name; 
-            report = `RELATÓRIO DE AULA - ${typeName}\n----------------------------------------\nProfessor: ${professor.nickname}\nInício: ${startTime.toLocaleString('pt-BR')}\nFim: ${now.toLocaleString('pt-BR')}\n\n`;
-
-            if (studentList.length === 0) {
-                report += "Nenhum aluno registrado.\n";
-            } else {
-                studentList.forEach(student => {
-                    const v = (verdicts[student] || 'Aprovado').toUpperCase();
-                    const s = individualScores[student] || (isAdminActivity ? 'Sim' : '0');
-                    const c = individualComments[student] || 'Sem observações.';
-                    
-                    report += `ALUNO: ${student}\n`;
-                    report += `VEREDITO: ${v}\n`;
-                    
-                    if (isAdminActivity) {
-                        report += `ATIVIDADE ENVIADA: ${s.toUpperCase()}\n`;
-                    } else {
-                        report += `PONTUAÇÃO: ${s}/${selectedType.maxScore}\n`;
-                    }
-                    
-                    report += `OBSERVAÇÕES: ${c}\n\n`;
-                });
-            }
-            
-            report += `----------------------------------------`;
-            return report.trim(); 
-        };
         
         const handlePostAndProcess = async () => {
-            if (studentList.length === 0) return alert("Adicione alunos antes de enviar.");
+            if (studentList.length === 0) return addToast('error', 'Erro', "Adicione alunos antes de enviar.");
             setIsSendingSheet(true);
             
             try {
@@ -1135,7 +1125,6 @@
                 });
                 
                 await postToSheet(payload);
-                navigator.clipboard.writeText(formatReport()); 
 
                 // 2. Check for Admin Activity Failures and Send MPs (Integrated Action)
                 let mpMessage = "";
@@ -1157,19 +1146,19 @@
                                 if (success) sentCount++; else errorCount++;
                             }
                             
-                            mpMessage = `\n${sentCount} MP(s) de reprovação enviada(s).`;
-                            if (errorCount > 0) mpMessage += ` Falha ao enviar ${errorCount} MP(s).`;
+                            mpMessage = ` | ${sentCount} MP(s) enviada(s).`;
+                            if (errorCount > 0) mpMessage += ` Falha em ${errorCount}.`;
                         } catch (e) {
                             console.error(e);
-                            mpMessage = "\nErro ao carregar modelo de MP.";
+                            mpMessage = " | Erro ao carregar MP.";
                         }
                     }
                 }
 
-                alert(`Dados postados com sucesso! Relatório copiado para a área de transferência.${mpMessage}`);
+                addToast('success', 'Sucesso', `Dados postados na planilha.${mpMessage}`);
 
             } catch (error) {
-                alert("Erro ao enviar para a planilha. Tente novamente.");
+                addToast('error', 'Erro', "Falha ao enviar para a planilha. Tente novamente.");
             } finally {
                 setIsSendingSheet(false);
             }
@@ -1190,8 +1179,6 @@
                      if (isAdminActivity && value === 'Não') {
                          setVerdicts(prev => ({...prev, [student]: 'Reprovado'}));
                      } else if (isAdminActivity && value === 'Sim') {
-                         // Optional: auto-approve if changed back to Sim? Usually safer to leave manual or revert to default.
-                         // Let's revert to Aprovado for convenience if it was Reprovado
                          setVerdicts(prev => ({...prev, [student]: 'Aprovado'}));
                      }
                  }
@@ -1358,6 +1345,7 @@
       };
 
       const ClassHistoryList = ({ currentUser }) => {
+        // ... (Same as previous)
         const [history, setHistory] = useState([]); 
         const [loading, setLoading] = useState(true); 
         const [searchTerm, setSearchTerm] = useState(''); 
@@ -1405,7 +1393,7 @@
 
         return (
           <div className="space-y-8 animate-fade-in">
-            <div className="flex flex-col gap-2 border-b-2 border-slate-100 pb-4">
+            <div className="flex flex-col gap-2 border-b-2 border-slate-100 dark:border-white/5 pb-4">
                 <h2 className="text-2xl font-condensed font-bold text-slate-900 dark:text-white uppercase italic">Relatório de Aulas</h2>
                 <p className="text-slate-500 text-sm font-medium">Histórico completo de cursos.</p>
             </div>
@@ -1452,7 +1440,9 @@
                             {filteredHistory.length > 0 ? (
                                 filteredHistory.map((entry, index) => { 
                                     const isApproved = entry.verdict.toLowerCase().includes('aprovado'); 
-                                    const hasAdminActivity = entry.adminActivity.toLowerCase().includes('sim') || entry.adminActivity.toLowerCase().includes('entregue'); 
+                                    const hasMp = entry.mpSent && (entry.mpSent.toLowerCase() === 'sim' || entry.mpSent.toLowerCase() === 'não');
+                                    const scoreDisplay = entry.score || (hasMp ? entry.mpSent : '-');
+
                                     return (
                                         <tr key={index} className="group hover:bg-slate-50 dark:hover:bg-dark-hover transition-colors border-b border-slate-100 dark:border-white/5 last:border-0">
                                             <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-mono text-xs">
@@ -1464,7 +1454,7 @@
                                             <td className="px-6 py-4 text-slate-800 dark:text-slate-200">
                                                 <div className="flex flex-col">
                                                     <span className="font-bold font-condensed uppercase tracking-wide text-xs">{entry.className}</span>
-                                                    {hasAdminActivity && (<span className="text-[10px] text-brand flex items-center gap-1 mt-0.5"><FileCheck size={10} /> Atividade</span>)}
+                                                    {hasMp && (<span className="text-[10px] text-brand flex items-center gap-1 mt-0.5"><FileCheck size={10} /> Atividade</span>)}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-condensed uppercase text-xs font-bold">{entry.professor}</td>
@@ -1476,7 +1466,7 @@
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-center font-bold font-mono text-slate-700 dark:text-white">{entry.score}</td>
+                                            <td className="px-6 py-4 text-center font-bold font-mono text-slate-700 dark:text-white">{scoreDisplay}</td>
                                         </tr>
                                     ); 
                                 })
@@ -1493,7 +1483,8 @@
         );
       };
 
-      const CorrectionTool = ({ currentUser, onNavigateToReport }) => {
+      const CorrectionTool = ({ currentUser, onNavigateToReport, addToast }) => {
+        // ... (Same as previous)
         const [studentNick, setStudentNick] = useState(''); 
         const [bbcodeInput, setBbcodeInput] = useState(''); 
         const [result, setResult] = useState({ approved: false, missing: [], checked: false });
@@ -1522,7 +1513,7 @@
         
         const handleMpSend = async (isApproval) => {
              if (!studentNick.trim()) {
-                 alert('Por favor, informe o nickname do aluno.');
+                 addToast('error', 'Erro', 'Por favor, informe o nickname do aluno.');
                  return;
              }
              
@@ -1532,7 +1523,6 @@
                      ? "https://raw.githubusercontent.com/brendonrcc/CFOmps/refs/heads/main/cfoapro" 
                      : "https://raw.githubusercontent.com/brendonrcc/CFOmps/refs/heads/main/cforep";
                  
-                 console.log(`[Correction] Fetching template: ${url}`);
                  const resp = await fetch(url);
                  if (!resp.ok) throw new Error('Falha ao carregar modelo de MP');
                  const template = await resp.text();
@@ -1556,13 +1546,12 @@
                  const success = await sendPrivateMessage(studentNick, subject, messageBody);
                  
                  if (success) {
-                     alert(`MP enviada com sucesso para ${studentNick}!`);
+                     addToast('success', 'Sucesso', `MP enviada com sucesso para ${studentNick}!`);
                  } else {
-                     alert('Erro ao enviar MP. Verifique se o usuário existe ou se há Flood.');
+                     addToast('error', 'Erro', 'Falha ao enviar MP. Verifique Flood/Usuário.');
                  }
              } catch (error) {
-                 console.error("[Correction] Error:", error);
-                 alert(`Erro ao processar: ${error.message}`);
+                 addToast('error', 'Erro', `Erro ao processar: ${error.message}`);
              } finally {
                  setSendingMp(false);
              }
@@ -1574,14 +1563,13 @@
                 setBbcodeInput(text); 
                 if(result.checked) setResult({...result, checked: false}); 
             } catch (err) { 
-                console.error(err);
-                alert("Acesso à área de transferência bloqueado. Cole manualmente (Ctrl+V).");
+                addToast('error', 'Bloqueado', "Cole manualmente (Ctrl+V).");
             } 
         };
 
         const handlePostReport = (approved) => {
             if (!studentNick.trim()) {
-                alert('Preencha o nickname do aluno.');
+                addToast('error', 'Erro', 'Preencha o nickname do aluno.');
                 return;
             }
             
@@ -1603,7 +1591,7 @@
         };
 
         const handleForumPost = async () => {
-            if (!studentNick.trim()) { alert("Preencha o nickname do aluno."); return; }
+            if (!studentNick.trim()) { addToast('error', 'Erro', "Preencha o nickname do aluno."); return; }
             
             setPostingForum(true);
             
@@ -1621,10 +1609,10 @@
 
             try {
                 await postToForumTopic(1, message);
-                alert('Postagem realizada com sucesso!');
+                addToast('success', 'Sucesso', 'Postagem realizada com sucesso!');
             } catch (e) {
                 console.error(e);
-                alert('Erro ao postar: ' + e.message);
+                addToast('error', 'Erro', 'Erro ao postar: ' + e.message);
             } finally {
                 setPostingForum(false);
             }
@@ -1795,6 +1783,7 @@
       ];
 
       const MobileMenu = ({ menuItems, currentUser, currentView, navigateTo, onClose }) => {
+          // ... (Same as previous)
           return (
             <div className="fixed inset-0 z-[1000] lg:hidden">
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
@@ -1850,13 +1839,101 @@
           );
       };
 
+      // --- AUTH SCREEN COMPONENT ---
+      const AuthScreen = ({ status }) => {
+          return (
+            <div className="flex flex-col min-h-screen w-full bg-[#050806] relative overflow-hidden flex items-center justify-center">
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(46,92,24,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(46,92,24,0.05)_1px,transparent_1px)] bg-[size:30px_30px] opacity-20 pointer-events-none"></div>
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(46,92,24,0.1),transparent_70%)] pointer-events-none"></div>
+                
+                <div className="relative z-10 w-full max-w-lg p-8">
+                    <div className="relative border border-brand/30 bg-[#0a0f0b]/90 backdrop-blur-md p-10 flex flex-col items-center justify-center shadow-[0_0_50px_rgba(46,92,24,0.1)] overflow-hidden rounded-sm">
+                        
+                        {/* Scanning Line Animation */}
+                        <div className="absolute top-0 left-0 w-full h-1 bg-brand/50 shadow-[0_0_15px_#2e5c18] animate-scan pointer-events-none z-0"></div>
+                        
+                        {/* Status Icon */}
+                        <div className="mb-8 relative z-10">
+                            {status === 'identifying' && (
+                                <div className="w-24 h-24 rounded-full border-2 border-brand/30 flex items-center justify-center relative">
+                                    <div className="absolute inset-0 rounded-full border border-brand/20 animate-ping opacity-50"></div>
+                                    <Scan size={40} className="text-brand animate-pulse" />
+                                </div>
+                            )}
+                            {status === 'verifying' && (
+                                <div className="w-24 h-24 rounded-full border-2 border-yellow-500/30 flex items-center justify-center relative">
+                                    <div className="absolute inset-0 rounded-full border-t-2 border-yellow-500 animate-spin"></div>
+                                    <Fingerprint size={40} className="text-yellow-500" />
+                                </div>
+                            )}
+                            {status === 'success' && (
+                                <div className="w-24 h-24 rounded-full border-2 border-green-500/30 flex items-center justify-center relative bg-green-500/10">
+                                    <ShieldCheck size={48} className="text-green-500" />
+                                </div>
+                            )}
+                            {(status === 'denied_nologin' || status === 'denied_permission') && (
+                                <div className="w-24 h-24 rounded-full border-2 border-red-500/30 flex items-center justify-center relative bg-red-500/10">
+                                    <ShieldAlert size={48} className="text-red-500" />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Status Text */}
+                        <h2 className="text-2xl font-condensed font-bold uppercase tracking-widest text-white mb-2 z-10 text-center leading-none">
+                            {status === 'identifying' && "Escaneando Credenciais..."}
+                            {status === 'verifying' && "Verificando Autorização..."}
+                            {status === 'success' && "Acesso Autorizado"}
+                            {(status === 'denied_nologin' || status === 'denied_permission') && "Acesso Negado"}
+                        </h2>
+
+                        <p className="text-[10px] font-mono text-brand uppercase tracking-[0.2em] mb-6 z-10 text-center opacity-80">
+                            {status === 'identifying' && "ESTABELECENDO CONEXÃO SEGURA COM O FÓRUM"}
+                            {status === 'verifying' && "CONSULTANDO BANCO DE DADOS MILITAR"}
+                            {status === 'success' && "REDIRECIONANDO PARA O SISTEMA..."}
+                            {status === 'denied_nologin' && "FALHA NA IDENTIFICAÇÃO BIOMÉTRICA"}
+                            {status === 'denied_permission' && "SEM CREDENCIAIS DE ACESSO SUFICIENTES"}
+                        </p>
+
+                        {/* Error Details / Actions */}
+                        {(status === 'denied_nologin' || status === 'denied_permission') && (
+                            <div className="w-full bg-red-950/30 border border-red-500/30 p-4 relative z-10 animate-fade-in">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <AlertTriangle size={16} className="text-red-500" />
+                                    <span className="text-xs font-bold text-red-400 uppercase tracking-wide">Motivo do Bloqueio</span>
+                                </div>
+                                <p className="text-xs text-red-200/80 font-mono leading-relaxed mb-4">
+                                    {status === 'denied_nologin' 
+                                        ? "Não foi possível identificar o usuário logado. Certifique-se de estar conectado ao fórum antes de acessar este sistema." 
+                                        : "O usuário identificado não possui as permissões necessárias para acessar este painel restrito."}
+                                </p>
+                                <a href="/login" className="block w-full py-3 bg-red-600 hover:bg-red-700 text-white text-center text-xs font-bold uppercase tracking-widest transition-colors rounded-sm">
+                                    Ir para Login do Fórum
+                                </a>
+                            </div>
+                        )}
+
+                        {/* Decorative HUD Elements */}
+                        <div className="absolute top-4 right-4 flex gap-1">
+                            <div className="w-1 h-1 bg-brand rounded-full animate-blink"></div>
+                            <div className="w-1 h-1 bg-brand rounded-full animate-blink" style={{animationDelay: '0.2s'}}></div>
+                            <div className="w-1 h-1 bg-brand rounded-full animate-blink" style={{animationDelay: '0.4s'}}></div>
+                        </div>
+                        <div className="absolute bottom-4 left-4 text-[8px] font-mono text-white/20">
+                            SECURE PROTOCOL V.2.0.4
+                        </div>
+                    </div>
+                </div>
+            </div>
+          );
+      };
+
       const App = () => {
         const [isLoggedIn, setIsLoggedIn] = useState(false);
         const [currentUser, setCurrentUser] = useState(null);
         const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-        const [nicknameInput, setNicknameInput] = useState('');
-        const [loginLoading, setLoginLoading] = useState(false);
-        const [loginError, setLoginError] = useState('');
+        const [authStatus, setAuthStatus] = useState('identifying'); // identifying, verifying, success, denied_nologin, denied_permission
+        
+        // ... (Other states)
         const [currentView, setCurrentView] = useState('home');
         const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
         const [selectedClass, setSelectedClass] = useState(null);
@@ -1868,12 +1945,61 @@
         const [manualContent, setManualContent] = useState([]);
         const [rerollTrigger, setRerollTrigger] = useState(0);
         const [textZoom, setTextZoom] = useState(0);
+        const [toasts, setToasts] = useState([]);
+
+        const addToast = (type, title, message) => {
+            const id = Math.random().toString(36).substr(2, 9);
+            setToasts(prev => [...prev, { id, type, title, message }]);
+            setTimeout(() => removeToast(id), 5000);
+        };
+
+        const removeToast = (id) => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        };
 
         useEffect(() => {
           const root = document.documentElement;
           if (theme === 'dark') root.classList.add('dark'); else root.classList.remove('dark');
           localStorage.setItem('theme', theme);
         }, [theme]);
+
+        // AUTOMATIC AUTHENTICATION EFFECT
+        useEffect(() => {
+            const authenticate = async () => {
+                setAuthStatus('identifying');
+                
+                // Add a small artificial delay for the "scan" effect to be visible
+                await new Promise(resolve => setTimeout(resolve, 1500));
+
+                const forumNick = await getForumUsername();
+
+                if (!forumNick) {
+                    setAuthStatus('denied_nologin');
+                    return;
+                }
+
+                setAuthStatus('verifying');
+                try {
+                    const user = await loginUser(forumNick);
+                    
+                    if (user) {
+                        setAuthStatus('success');
+                        setTimeout(() => {
+                            setCurrentUser(user);
+                            setIsLoggedIn(true);
+                        }, 1000); // Transition delay
+                    } else {
+                        setAuthStatus('denied_permission');
+                    }
+                } catch (e) {
+                    console.error(e);
+                    // Treat fetch errors as denied/try again logic could go here
+                    setAuthStatus('denied_permission'); 
+                }
+            };
+
+            authenticate();
+        }, []);
 
         useEffect(() => {
             let gid = null;
@@ -1893,16 +2019,6 @@
             }
         }, [currentView]);
 
-        const handleLogin = async (e) => {
-          e.preventDefault();
-          if (!nicknameInput.trim()) return;
-          setLoginLoading(true); setLoginError('');
-          try {
-            const user = await loginUser(nicknameInput);
-            if (user) { setCurrentUser(user); setIsLoggedIn(true); } else setLoginError('Nickname não encontrado.');
-          } catch (err) { setLoginError('Erro de conexão.'); } finally { setLoginLoading(false); }
-        };
-
         const openClass = async (cls) => {
           setSelectedClass(cls);
           setCurrentView('classes');
@@ -1921,8 +2037,8 @@
                 classId: 'admin_activity', 
                 startTime: new Date(), 
                 studentNick: data.nick,
-                verdict: data.approved ? 'Aprovado' : 'Reprovado',
-                score: 'Sim', // Indicates Activity was Sent
+                verdict: data.approved ? 'Aprovado' : 'Reprovado', 
+                score: 'Sim', 
                 comments: data.comments
             }); 
             setCurrentView('reports'); 
@@ -1994,91 +2110,15 @@
         }, []);
 
         if (!isLoggedIn) {
-          return (
-            <div className="flex flex-col min-h-screen w-full bg-[#0f1a11] relative overflow-hidden selection:bg-brand selection:text-white">
-              <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:50px_50px] pointer-events-none opacity-20"></div>
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(46,92,24,0.15),transparent_70%)] pointer-events-none"></div>
-              
-              <div className="flex-1 flex flex-col items-center justify-center relative z-10 p-4">
-                  <main className="w-full max-w-md bg-[#121a14]/90 backdrop-blur-md border border-white/10 rounded-sm shadow-[0_0_50px_rgba(0,0,0,0.5)] p-8 md:p-12 relative group overflow-hidden">
-                      <div className="absolute top-0 left-0 w-20 h-20 border-t-2 border-l-2 border-brand/30 group-hover:border-brand/60 transition-colors rounded-tl-sm pointer-events-none"></div>
-                      <div className="absolute bottom-0 right-0 w-20 h-20 border-b-2 border-r-2 border-brand/30 group-hover:border-brand/60 transition-colors rounded-br-sm pointer-events-none"></div>
-
-                      <div className="text-center mb-10 relative">
-                          <div className="w-24 h-24 bg-gradient-to-b from-white/5 to-transparent rounded-full flex items-center justify-center mx-auto mb-6 border border-white/10 shadow-inner group-hover:scale-105 transition-transform duration-500">
-                              <img src={LOGO_URL} alt="CFO" className="h-14 w-auto drop-shadow-[0_0_15px_rgba(46,92,24,0.5)]" />
-                          </div>
-                          <h1 className="text-4xl font-condensed font-bold text-white uppercase italic tracking-tighter leading-none mb-2">Login Operacional</h1>
-                          <div className="h-0.5 w-12 bg-brand mx-auto mb-4"></div>
-                          <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.2em]">Identificação Obrigatória</p>
-                      </div>
-
-                      <form onSubmit={handleLogin} className="space-y-6 relative z-10">
-                          <div className="space-y-2">
-                              <label className="text-[10px] font-bold uppercase tracking-widest text-brand ml-1">Credencial de Acesso</label>
-                              <div className="relative group/input">
-                                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                      <Icon name="shield-check" className="h-5 w-5 text-slate-500 group-focus-within/input:text-brand transition-colors" />
-                                  </div>
-                                  <input 
-                                      type="text" 
-                                      value={nicknameInput} 
-                                      onChange={(e) => setNicknameInput(e.target.value)} 
-                                      className="block w-full pl-12 pr-4 py-4 bg-[#0a0f0b] border border-white/10 text-white placeholder-white/20 focus:ring-1 focus:ring-brand focus:border-brand block w-full text-sm font-bold uppercase tracking-wider transition-all shadow-inner rounded-sm" 
-                                      placeholder="Ex: Marechal.Br" 
-                                      autoFocus
-                                  />
-                                  <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white/20 pointer-events-none"></div>
-                              </div>
-                          </div>
-
-                          {loginError && (
-                              <div className="p-4 bg-red-950/30 border-l-2 border-red-500 flex items-center gap-3 animate-fade-in backdrop-blur-sm">
-                                  <AlertCircle size={16} className="text-red-500 shrink-0" />
-                                  <span className="text-red-200 text-xs font-bold uppercase tracking-wide">{loginError}</span>
-                              </div>
-                          )}
-
-                          <button 
-                              type="submit" 
-                              disabled={loginLoading} 
-                              className="w-full bg-brand hover:bg-[#3d7025] text-white font-condensed font-bold text-lg py-4 transition-all uppercase tracking-widest flex justify-center shadow-[0_4px_0_rgb(20,40,10)] hover:shadow-[0_2px_0_rgb(20,40,10)] hover:translate-y-[2px] active:shadow-none active:translate-y-[4px] rounded-sm relative overflow-hidden group/btn disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                              <span className="relative z-10 flex items-center gap-3">
-                                  {loginLoading ? (
-                                      <>
-                                        <Loader2 className="animate-spin" size={20} />
-                                        <span>Autenticando...</span>
-                                      </>
-                                  ) : (
-                                      <>
-                                        <span>Acessar Sistema</span>
-                                        <ArrowRight size={18} className="group-hover/btn:translate-x-1 transition-transform"/>
-                                      </>
-                                  )}
-                              </span>
-                          </button>
-                      </form>
-                      
-                      <div className="mt-8 text-center pt-6 border-t border-white/5">
-                          <p className="text-[9px] text-slate-500 uppercase tracking-widest font-mono flex items-center justify-center gap-2">
-                              <Lock size={10} /> Conexão Segura e Criptografada
-                          </p>
-                      </div>
-                  </main>
-                  
-                  <div className="mt-8 text-white/20 text-[10px] font-mono tracking-widest">
-                      ID DO TERMINAL: {Math.random().toString(36).substr(2, 9).toUpperCase()}
-                  </div>
-              </div>
-            </div>
-          );
+          return <AuthScreen status={authStatus} />;
         }
 
         return (
           <div className="flex flex-col min-h-screen w-full font-sans text-slate-800 dark:text-slate-200">
             {showWarning && <Toast message="Pulo de linhas detectado! Mantenha a ordem do script." onClose={() => setShowWarning(false)} />}
             
+            <ToastContainer toasts={toasts} removeToast={removeToast} />
+
             <Navbar user={currentUser} onMenuClick={() => setMobileMenuOpen(true)} navigateTo={setCurrentView} currentView={currentView} menuItems={MENU_ITEMS} toggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')} theme={theme} />
 
             {mobileMenuOpen && (
@@ -2275,6 +2315,7 @@
                             initialComments={reportData?.comments}
                             isEvaluation={false}
                             initialQuestions={null}
+                            addToast={addToast}
                         />
                     )}
 
@@ -2284,6 +2325,7 @@
                         <CorrectionTool 
                             currentUser={currentUser} 
                             onNavigateToReport={handleNavigateFromCorrection}
+                            addToast={addToast}
                         />
                     )}
                     
