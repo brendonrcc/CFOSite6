@@ -1910,9 +1910,9 @@
 
                         <p className="text-[10px] font-mono text-brand uppercase tracking-[0.2em] mb-6 z-10 text-center opacity-80">
                             {status === 'identifying' && "ESTABELECENDO CONEXÃO SEGURA COM O FÓRUM"}
-                            {status === 'verifying' && "CONSULTANDO BANCO DE DADOS MILITAR"}
+                            {status === 'verifying' && "CONSULTANDO BANCO DE DADOS DO CFO"}
                             {status === 'success' && "REDIRECIONANDO PARA O SISTEMA..."}
-                            {status === 'denied_nologin' && "FALHA NA IDENTIFICAÇÃO BIOMÉTRICA"}
+                            {status === 'denied_nologin' && "FALHA NA IDENTIFICAÇÃO"}
                             {status === 'denied_permission' && "SEM CREDENCIAIS DE ACESSO SUFICIENTES"}
                         </p>
 
@@ -1925,11 +1925,11 @@
                                 </div>
                                 <p className="text-xs text-red-200/80 font-mono leading-relaxed mb-4">
                                     {status === 'denied_nologin' 
-                                        ? "Não foi possível identificar o usuário logado. Certifique-se de estar conectado ao fórum antes de acessar este sistema." 
+                                        ? "Não foi possível identificar o usuário logado. Certifique-se de estar conectado ao fórum antes de acessar." 
                                         : "O usuário identificado não possui as permissões necessárias para acessar este painel restrito."}
                                 </p>
                                 <a href="/login" className="block w-full py-3 bg-red-600 hover:bg-red-700 text-white text-center text-xs font-bold uppercase tracking-widest transition-colors rounded-sm">
-                                    Ir para Login do Fórum
+                                    Ir para o Fórum
                                 </a>
                             </div>
                         )}
@@ -1941,7 +1941,7 @@
                             <div className="w-1 h-1 bg-brand rounded-full animate-blink" style={{animationDelay: '0.4s'}}></div>
                         </div>
                         <div className="absolute bottom-4 left-4 text-[8px] font-mono text-white/20">
-                            SECURE PROTOCOL V.2.0.4
+                            CFOSYSTEM V1
                         </div>
                     </div>
                 </div>
