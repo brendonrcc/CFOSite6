@@ -103,7 +103,7 @@
 
       // --- CONSTANTS ---
       const WORKER_URL = "https://api-professor-dashboard.brendonhbrcc.workers.dev/";
-      const MACRO_URL = "https://script.google.com/macros/s/AKfycbzBeveTs4YFmUTeacOcXcEaJfAHbztNzUKq8XAq-ErBfMHzfBGvVi1FfZE48DUIuO2baQ/exec";
+      const MACRO_URL = "https://script.google.com/macros/s/AKfycbx5Go-UGIcQvyA3vefhhl5Rc6-930cG9LsCRb1JPKzTHN5dNfBUCsD063K5RCyANGplEA/exec";
       
       const AUTH_GID = "1512246214";
       const HISTORY_GID = "552818815";
