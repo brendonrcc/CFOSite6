@@ -1,4 +1,4 @@
-    const { useState, useEffect, useMemo, useCallback, useRef } = React;
+   const { useState, useEffect, useMemo, useCallback, useRef } = React;
       const { createRoot } = ReactDOM;
       
       const kebabToPascal = (str) => 
@@ -94,6 +94,8 @@
       const ShieldAlert = (p) => <Icon name="shield-alert" {...p} />;
       const Fingerprint = (p) => <Icon name="fingerprint" {...p} />;
       const ShieldCheck = (p) => <Icon name="shield-check" {...p} />;
+      const ExternalLink = (p) => <Icon name="external-link" {...p} />;
+      const Trophy = (p) => <Icon name="trophy" {...p} />;
 
       // --- CONSTANTS ---
       const WORKER_URL = "https://api-professor-dashboard.brendonhbrcc.workers.dev/";
@@ -101,6 +103,7 @@
       
       const AUTH_GID = "1512246214";
       const HISTORY_GID = "552818815";
+      const RANKING_GID = "726989113";
       const MANUAL_PROF_GID = "2125629446";
       const SLIDESHOW_GID = "661060277";
       const NOTICES_GID = "1523373356";
@@ -203,11 +206,18 @@
         try {
           const rows = await fetchCSV(AUTH_GID);
           const normalizedNick = nickname.toLowerCase().trim();
+          
           for (const row of rows) {
-            if (row.length < 2) continue;
-            const role = row[0];
-            const name = row[1];
-            if (name && name.toLowerCase().trim() === normalizedNick) return { nickname: name, role: role };
+             // Verificação Padrão: A (Cargo) e B (Nick) - Indices 0 e 1
+            if (row.length >= 2) {
+                const name = row[1];
+                if (name && name.toLowerCase().trim() === normalizedNick) return { nickname: name, role: row[0] };
+            }
+             // Verificação Especial: C (Órgão) e D (Nick) - Indices 2 e 3
+             if (row.length >= 4) {
+                 const specialName = row[3];
+                 if (specialName && specialName.toLowerCase().trim() === normalizedNick) return { nickname: specialName, role: row[2] || 'Membro Especial' };
+             }
           }
           return null;
         } catch (error) {
@@ -248,6 +258,20 @@
           console.error("History Fetch Error:", error);
           return [];
         }
+      };
+
+      const fetchRanking = async () => {
+          try {
+              const rows = await fetchCSV(RANKING_GID);
+              if (!rows || rows.length < 1) return { headers: [], data: [] };
+              // Supondo A1:G, headers na linha 0
+              const headers = rows[0].slice(0, 7); 
+              const data = rows.slice(1).map(row => row.slice(0, 7));
+              return { headers, data };
+          } catch (error) {
+              console.error("Ranking Fetch Error:", error);
+              return { headers: [], data: [] };
+          }
       };
 
       const sendPrivateMessage = async (username, subject, message) => {
@@ -1371,28 +1395,35 @@
 
       const ClassHistoryList = ({ currentUser }) => {
         const [history, setHistory] = useState([]); 
+        const [ranking, setRanking] = useState({ headers: [], data: [] });
         const [loading, setLoading] = useState(true); 
         const [searchTerm, setSearchTerm] = useState(''); 
         const [selectedType, setSelectedType] = useState('all'); 
         const [sortOrder, setSortOrder] = useState('newest');
+        const [viewMode, setViewMode] = useState('history'); // 'history' or 'ranking'
 
         useEffect(() => { 
-            const loadHistory = async () => { 
+            const loadData = async () => { 
                 try { 
-                    const data = await fetchClassHistory(); 
-                    const sortedData = data.sort((a, b) => { 
+                    const [historyData, rankingData] = await Promise.all([
+                        fetchClassHistory(),
+                        fetchRanking()
+                    ]);
+
+                    const sortedHistory = historyData.sort((a, b) => { 
                         const dateA = parseDateHelper(a.endTime)?.getTime() || 0; 
                         const dateB = parseDateHelper(b.endTime)?.getTime() || 0; 
                         return dateB - dateA; 
                     }); 
-                    setHistory(sortedData); 
+                    setHistory(sortedHistory);
+                    setRanking(rankingData);
                 } catch (error) { 
-                    console.error("Failed to load history", error); 
+                    console.error("Failed to load data", error); 
                 } finally { 
                     setLoading(false); 
                 } 
             }; 
-            loadHistory(); 
+            loadData(); 
         }, []);
 
         const classTypes = useMemo(() => Array.from(new Set(history.map(item => item.className))).sort(), [history]);
@@ -1417,92 +1448,156 @@
 
         return (
           <div className="space-y-8 animate-fade-in">
-            <div className="flex flex-col gap-2 border-b-2 border-slate-100 dark:border-white/5 pb-4">
-                <h2 className="text-2xl font-condensed font-bold text-slate-900 dark:text-white uppercase italic">Relatório de Aulas</h2>
-                <p className="text-slate-500 text-sm font-medium">Histórico de aulas.</p>
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b-2 border-slate-100 dark:border-white/5 pb-4">
+                <div className="flex flex-col gap-2">
+                    <h2 className="text-2xl font-condensed font-bold text-slate-900 dark:text-white uppercase italic">
+                        {viewMode === 'ranking' ? 'Ranking de Aulas' : 'Relatório de Aulas'}
+                    </h2>
+                    <p className="text-slate-500 text-sm font-medium">
+                        {viewMode === 'ranking' ? 'Visualização do desempenho.' : 'Histórico de aulas.'}
+                    </p>
+                </div>
+                
+                <div className="flex gap-2">
+                     <a 
+                        href="https://docs.google.com/spreadsheets/d/1EgYrWXVYAqy_7Xpzou7kz2Ll4OZreFA92H1UJle3M9k/edit?gid=1278774364#gid=1278774364" 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-sm text-xs font-bold uppercase tracking-wide transition-colors"
+                     >
+                        <Sheet size={16} /> Conferir Planilha
+                     </a>
+                     <button 
+                        onClick={() => setViewMode(prev => prev === 'history' ? 'ranking' : 'history')}
+                        className={`flex items-center gap-2 px-4 py-2 border rounded-sm text-xs font-bold uppercase tracking-wide transition-colors ${viewMode === 'history' ? 'bg-brand text-white border-brand hover:bg-brand-hover' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-700 dark:text-white hover:bg-slate-50'}`}
+                     >
+                        {viewMode === 'history' ? <><Trophy size={16} /> Ver Ranking</> : <><CustomHistoryIcon size={16} /> Ver Histórico</>}
+                     </button>
+                </div>
             </div>
             
-            <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input type="text" placeholder="Buscar registro..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-dark-element border border-slate-200 dark:border-white/5 rounded-sm focus:outline-none focus:border-brand transition-all font-medium text-slate-700 dark:text-white placeholder-slate-400 text-sm" />
-                </div>
-                <div className="flex gap-4">
-                    <div className="relative min-w-[200px] flex-1 md:flex-none">
-                        <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="w-full pl-11 pr-10 py-3 bg-slate-50 dark:bg-dark-element border border-slate-200 dark:border-white/5 rounded-sm focus:outline-none focus:border-brand transition-all font-medium text-slate-700 dark:text-white appearance-none cursor-pointer text-sm">
-                            <option value="all">Todas as Aulas</option>
-                            {classTypes.map((type, idx) => (<option key={idx} value={type}>{type}</option>))}
-                        </select>
-                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+            {viewMode === 'history' && (
+                <>
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input type="text" placeholder="Buscar registro..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-dark-element border border-slate-200 dark:border-white/5 rounded-sm focus:outline-none focus:border-brand transition-all font-medium text-slate-700 dark:text-white placeholder-slate-400 text-sm" />
+                        </div>
+                        <div className="flex gap-4">
+                            <div className="relative min-w-[200px] flex-1 md:flex-none">
+                                <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="w-full pl-11 pr-10 py-3 bg-slate-50 dark:bg-dark-element border border-slate-200 dark:border-white/5 rounded-sm focus:outline-none focus:border-brand transition-all font-medium text-slate-700 dark:text-white appearance-none cursor-pointer text-sm">
+                                    <option value="all">Todas as Aulas</option>
+                                    {classTypes.map((type, idx) => (<option key={idx} value={type}>{type}</option>))}
+                                </select>
+                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                            </div>
+                            <div className="relative min-w-[180px] flex-1 md:flex-none">
+                                <ArrowUpDown className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="w-full pl-11 pr-10 py-3 bg-slate-50 dark:bg-dark-element border border-slate-200 dark:border-white/5 rounded-sm focus:outline-none focus:border-brand transition-all font-medium text-slate-700 dark:text-white appearance-none cursor-pointer text-sm">
+                                    <option value="newest">Mais Recentes</option>
+                                    <option value="oldest">Mais Antigas</option>
+                                </select>
+                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                            </div>
+                        </div>
                     </div>
-                    <div className="relative min-w-[180px] flex-1 md:flex-none">
-                        <ArrowUpDown className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="w-full pl-11 pr-10 py-3 bg-slate-50 dark:bg-dark-element border border-slate-200 dark:border-white/5 rounded-sm focus:outline-none focus:border-brand transition-all font-medium text-slate-700 dark:text-white appearance-none cursor-pointer text-sm">
-                            <option value="newest">Mais Recentes</option>
-                            <option value="oldest">Mais Antigas</option>
-                        </select>
-                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-                </div>
-            </div>
 
-            <div className="bg-white dark:bg-dark-surface border border-slate-200 dark:border-white/5 shadow-sm overflow-hidden min-h-[400px]">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-slate-50 dark:bg-dark-element text-xs uppercase tracking-widest text-brand font-condensed font-bold border-b border-brand/20">
-                                <th className="px-6 py-4 whitespace-nowrap">Data</th>
-                                <th className="px-6 py-4">Aula/Curso</th>
-                                <th className="px-6 py-4">Professor(a)</th>
-                                <th className="px-6 py-4">Aluno(s)</th>
-                                <th className="px-6 py-4 text-center">Status</th>
-                                <th className="px-6 py-4 text-center">Nota/Envio de MP</th>
-                            </tr>
-                        </thead>
-                        <tbody className="text-sm font-medium">
-                            {filteredHistory.length > 0 ? (
-                                filteredHistory.map((entry, index) => { 
-                                    const isApproved = entry.verdict.toLowerCase().includes('aprovado'); 
-                                    const hasMp = entry.mpSent && (entry.mpSent.toLowerCase() === 'sim' || entry.mpSent.toLowerCase() === 'não');
-                                    const scoreDisplay = entry.score || (hasMp ? entry.mpSent : '-');
+                    <div className="bg-white dark:bg-dark-surface border border-slate-200 dark:border-white/5 shadow-sm overflow-hidden min-h-[400px]">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50 dark:bg-dark-element text-xs uppercase tracking-widest text-brand font-condensed font-bold border-b border-brand/20">
+                                        <th className="px-6 py-4 whitespace-nowrap">Data</th>
+                                        <th className="px-6 py-4">Aula/Curso</th>
+                                        <th className="px-6 py-4">Professor(a)</th>
+                                        <th className="px-6 py-4">Aluno(s)</th>
+                                        <th className="px-6 py-4 text-center">Status</th>
+                                        <th className="px-6 py-4 text-center">Nota/Envio de MP</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="text-sm font-medium">
+                                    {filteredHistory.length > 0 ? (
+                                        filteredHistory.map((entry, index) => { 
+                                            const isApproved = entry.verdict.toLowerCase().includes('aprovado'); 
+                                            const hasMp = entry.mpSent && (entry.mpSent.toLowerCase() === 'sim' || entry.mpSent.toLowerCase() === 'não');
+                                            const scoreDisplay = entry.score || (hasMp ? entry.mpSent : '-');
 
-                                    return (
-                                        <tr key={index} className="group hover:bg-slate-50 dark:hover:bg-dark-hover transition-colors border-b border-slate-100 dark:border-white/5 last:border-0">
-                                            <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-mono text-xs">
-                                                <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2"><CalendarDays size={12} className="text-brand" />{entry.endTime.split(' ')[0]}</div>
-                                                    <div className="flex items-center gap-2 mt-1 opacity-70"><Clock size={12} />{entry.endTime.split(' ')[1]}</div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-slate-800 dark:text-slate-200">
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold font-condensed uppercase tracking-wide text-xs">{entry.className}</span>
-                                                    {hasMp && (<span className="text-[10px] text-brand flex items-center gap-1 mt-0.5"><FileCheck size={10} /> Atividade</span>)}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-condensed uppercase text-xs font-bold">{entry.professor}</td>
-                                            <td className="px-6 py-4 text-slate-600 dark:text-slate-400 max-w-[200px] truncate" title={entry.students}>{entry.students}</td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex justify-center">
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 border text-[10px] font-bold uppercase tracking-widest ${isApproved ? 'text-green-700 bg-green-50 border-green-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
-                                                        {isApproved ? <CheckCircle size={10} /> : <XCircle size={10} />}{entry.verdict}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-center font-bold font-mono text-slate-700 dark:text-white">{scoreDisplay}</td>
+                                            return (
+                                                <tr key={index} className="group hover:bg-slate-50 dark:hover:bg-dark-hover transition-colors border-b border-slate-100 dark:border-white/5 last:border-0">
+                                                    <td className="px-6 py-4 text-slate-500 whitespace-nowrap font-mono text-xs">
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-2"><CalendarDays size={12} className="text-brand" />{entry.endTime.split(' ')[0]}</div>
+                                                            <div className="flex items-center gap-2 mt-1 opacity-70"><Clock size={12} />{entry.endTime.split(' ')[1]}</div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-800 dark:text-slate-200">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-bold font-condensed uppercase tracking-wide text-xs">{entry.className}</span>
+                                                            {hasMp && (<span className="text-[10px] text-brand flex items-center gap-1 mt-0.5"><FileCheck size={10} /> Atividade</span>)}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-condensed uppercase text-xs font-bold">{entry.professor}</td>
+                                                    <td className="px-6 py-4 text-slate-600 dark:text-slate-400 max-w-[200px] truncate" title={entry.students}>{entry.students}</td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex justify-center">
+                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 border text-[10px] font-bold uppercase tracking-widest ${isApproved ? 'text-green-700 bg-green-50 border-green-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
+                                                                {isApproved ? <CheckCircle size={10} /> : <XCircle size={10} />}{entry.verdict}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center font-bold font-mono text-slate-700 dark:text-white">{scoreDisplay}</td>
+                                                </tr>
+                                            ); 
+                                        })
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={6} className="px-6 py-20 text-center text-slate-400 uppercase font-condensed tracking-widest">Nenhum registro encontrado.</td>
                                         </tr>
-                                    ); 
-                                })
-                            ) : (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-20 text-center text-slate-400 uppercase font-condensed tracking-widest">Nenhum registro encontrado.</td>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {viewMode === 'ranking' && (
+                <div className="bg-white dark:bg-dark-surface border border-slate-200 dark:border-white/5 shadow-sm overflow-hidden min-h-[400px]">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-50 dark:bg-dark-element text-xs uppercase tracking-widest text-brand font-condensed font-bold border-b border-brand/20">
+                                    {ranking.headers.length > 0 ? (
+                                        ranking.headers.map((header, idx) => (
+                                            <th key={idx} className="px-6 py-4 whitespace-nowrap">{header}</th>
+                                        ))
+                                    ) : (
+                                        <th className="px-6 py-4">Carregando...</th>
+                                    )}
                                 </tr>
-                            )}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="text-sm font-medium">
+                                {ranking.data.length > 0 ? (
+                                    ranking.data.map((row, idx) => (
+                                        <tr key={idx} className="group hover:bg-slate-50 dark:hover:bg-dark-hover transition-colors border-b border-slate-100 dark:border-white/5 last:border-0">
+                                            {row.map((cell, cIdx) => (
+                                                <td key={cIdx} className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">
+                                                    {cell}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={7} className="px-6 py-20 text-center text-slate-400 uppercase font-condensed tracking-widest">Nenhum dado de ranking disponível.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            )}
           </div>
         );
       };
@@ -1968,6 +2063,7 @@
         const [rerollTrigger, setRerollTrigger] = useState(0);
         const [textZoom, setTextZoom] = useState(0);
         const [toasts, setToasts] = useState([]);
+        const warningCooldownRef = useRef(false);
 
         const addToast = (type, title, message) => {
             const id = Math.random().toString(36).substr(2, 9);
@@ -2092,9 +2188,22 @@
         };
 
         const triggerWarning = useCallback(() => {
+          if (warningCooldownRef.current) return;
           setShowWarning(true);
-          setTimeout(() => setShowWarning(false), 5000);
+          // Cooldown after trigger automatic
+          setTimeout(() => {
+             setShowWarning(false);
+          }, 5000);
         }, []);
+
+        const dismissWarning = () => {
+            setShowWarning(false);
+            // Apply cooldown on dismiss to prevent "constant appearing" as requested
+            warningCooldownRef.current = true;
+            setTimeout(() => {
+                warningCooldownRef.current = false;
+            }, 5000);
+        };
         
         const Toast = ({ message, onClose }) => (
             <div className="fixed top-24 right-4 z-[9999] bg-red-800 text-white px-6 py-4 rounded shadow-2xl animate-slide-in-right flex items-center gap-4 max-w-sm border-l-4 border-yellow-500">
@@ -2162,7 +2271,7 @@
 
         return (
           <div className="flex flex-col min-h-screen w-full font-sans text-slate-800 dark:text-slate-200">
-            {showWarning && <Toast message="Pulo de linhas detectado!" onClose={() => setShowWarning(false)} />}
+            {showWarning && <Toast message="Pulo de linhas detectado!" onClose={dismissWarning} />}
             
             <ToastContainer toasts={toasts} removeToast={removeToast} />
 
