@@ -771,7 +771,7 @@
         );
       };
 
-      const PrivateMessage = ({ block, status, onInteract }) => {
+     const PrivateMessage = ({ block, status, onInteract }) => {
         const [isOpen, setIsOpen] = useState(false); 
         const [nickname, setNickname] = useState(''); 
         const [sendState, setSendState] = useState('idle');
@@ -781,10 +781,11 @@
             if (!nickname.trim()) return; 
             setSendState('sending'); 
             
+            // Pega o assunto e a mensagem configurados no script (CSV)
             const subject = block.content || "Mensagem do Instrutor";
             const rawMessage = block.extra || "";
 
-            // 1. Separa a string pelos caracteres "/" e remove espaços em branco
+            // 1. DIVIDE OS NICKS PELA BARRA "/"
             const recipients = nickname.split('/').map(n => n.trim()).filter(n => n.length > 0);
 
             if (recipients.length === 0) {
@@ -795,9 +796,9 @@
             let successCount = 0;
             let failCount = 0;
 
-            // 2. Itera sobre cada destinatário encontrado
+            // 2. LOOP DE ENVIO PARA CADA ALUNO
             for (const recipient of recipients) {
-                // Opcional: Pequeno delay entre envios para evitar flood agressivo se a lista for grande
+                // Pequeno delay para evitar erro de flood se forem muitos
                 if (successCount > 0 || failCount > 0) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                 }
@@ -807,22 +808,19 @@
                 else failCount++;
             }
 
-            // 3. Lógica de Feedback
             if (successCount > 0) {
                 onInteract(block.id); 
-                // Exibe a lista de quem recebeu
                 setSentRecipient(recipients.join(', '));
                 setSendState('sent'); 
 
-                // Se houve falha parcial, avisa o usuário
                 if (failCount > 0) {
-                    alert(`MP enviada para ${successCount} usuário(s). Falha no envio para ${failCount} usuário(s).`);
+                    alert(`Enviado para ${successCount}. Falha para ${failCount}.`);
                 }
 
                 setTimeout(() => { setIsOpen(false); setSendState('idle'); setNickname(''); }, 2000); 
             } else {
                 setSendState('idle');
-                alert('Erro ao enviar MP. Verifique se os usuários existem, se você está logado no fórum ou aguarde o tempo de flood.');
+                alert('Erro ao enviar. Verifique o usuário ou o flood.');
             }
         };
 
@@ -1663,12 +1661,20 @@
         const handleClear = () => { setStudentNick(''); setBbcodeInput(''); setResult({ approved: false, missing: [], checked: false }); };
         
         const handleMpSend = async (isApproval) => {
+             // 1. Validação inicial e separação dos nicks
              if (!studentNick.trim()) {
-                 addToast('error', 'Erro', 'Por favor, informe o nickname do aluno.');
+                 addToast('error', 'Erro', 'Por favor, informe o nickname do aluno (ou alunos separados por /).');
                  return;
              }
              
+             const recipients = studentNick.split('/').map(n => n.trim()).filter(n => n.length > 0);
+             if (recipients.length === 0) return;
+
              setSendingMp(true);
+             
+             let successCount = 0;
+             let failCount = 0;
+
              try {
                  const url = isApproval 
                      ? "https://raw.githubusercontent.com/brendonrcc/CFOmps/refs/heads/main/cfoapro" 
@@ -1694,13 +1700,25 @@
                  const messageBody = template.replace('{MOTIVOS}', motives);
                  const subject = isApproval ? "[CFO] Aprovação na Atividade" : "[CFO] Reprovação na Atividade";
                  
-                 const success = await sendPrivateMessage(studentNick, subject, messageBody);
-                 
-                 if (success) {
-                     addToast('success', 'Sucesso', `MP enviada com sucesso para ${studentNick}!`);
-                 } else {
-                     addToast('error', 'Erro', 'Falha ao enviar MP. Verifique Flood/Usuário.');
+                 // 2. Loop de envio para múltiplos destinatários
+                 for (const recipient of recipients) {
+                     // Pequeno delay para evitar bloqueio por flood se forem muitos
+                     if (successCount > 0 || failCount > 0) await new Promise(r => setTimeout(r, 500));
+
+                     const success = await sendPrivateMessage(recipient, subject, messageBody);
+                     if (success) successCount++;
+                     else failCount++;
                  }
+                 
+                 // 3. Feedback final
+                 if (successCount > 0) {
+                     let msg = `MP enviada para ${successCount} aluno(s).`;
+                     if (failCount > 0) msg += ` Falha em ${failCount}.`;
+                     addToast('success', 'Sucesso', msg);
+                 } else {
+                     addToast('error', 'Erro', 'Falha total no envio. Verifique Flood/Usuário.');
+                 }
+
              } catch (error) {
                  addToast('error', 'Erro', `Erro ao processar: ${error.message}`);
              } finally {
