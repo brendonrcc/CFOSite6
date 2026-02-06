@@ -774,21 +774,20 @@
      const PrivateMessage = ({ block, status, onInteract }) => {
         const [isOpen, setIsOpen] = useState(false); 
         const [nickname, setNickname] = useState(''); 
-        const [sendState, setSendState] = useState('idle'); // idle, sending, sent
+        const [sendState, setSendState] = useState('idle'); 
         const [progressText, setProgressText] = useState('Enviar'); 
         const [sentRecipient, setSentRecipient] = useState(null);
 
-        // Função de Delay para evitar Flood
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         const handleSend = async () => { 
-            // Validação básica
             if (!nickname.trim()) return; 
             
             const subject = block.content || "Mensagem do Instrutor";
             const rawMessage = block.extra || "";
 
-            // 1. DIVIDIR OS NICKS (Garante que separe corretamente por /)
+            // --- CORREÇÃO AQUI ---
+            // Divide por "/" e limpa espaços. 
             const recipients = nickname.split('/').map(n => n.trim()).filter(n => n.length > 0);
 
             if (recipients.length === 0) return;
@@ -798,11 +797,11 @@
             let failCount = 0;
             let failedNicks = [];
 
-            // 2. LOOP DE ENVIO
+            // Loop de envio
             for (let i = 0; i < recipients.length; i++) {
                 const recipient = recipients[i];
                 
-                // Atualiza o botão para mostrar o progresso: "Enviando (1/3): Nick..."
+                // Atualiza o botão
                 setProgressText(`(${i + 1}/${recipients.length}) ${recipient}...`);
 
                 try {
@@ -815,33 +814,29 @@
                         failedNicks.push(recipient);
                     }
                 } catch (error) {
-                    console.error("Erro no loop de envio:", error);
+                    console.error("Erro envio:", error);
                     failCount++;
                     failedNicks.push(recipient);
                 }
 
-                // Aplica delay de 3 segundos APENAS se não for o último da lista
+                // Delay de 3 segundos entre envios (segurança contra flood)
                 if (i < recipients.length - 1) {
                     await delay(3000); 
                 }
             }
 
-            // 3. FINALIZAÇÃO
+            // Finalização
             if (successCount > 0) {
                 onInteract(block.id); 
-                
-                // Mostra a lista de enviados no card verde
                 setSentRecipient(recipients.join(', '));
-                
                 setSendState('sent'); 
                 setProgressText('Concluído');
 
-                // Se houver falhas parciais, avisa quem falhou
+                // Se houver falha (ex: enviar para si mesmo), avisa aqui
                 if (failCount > 0) {
-                    alert(`Enviado para ${successCount}. Falha ao enviar para: ${failedNicks.join(', ')}`);
+                    alert(`Enviado para: ${successCount}.\nFalha ao enviar para: ${failedNicks.join(', ')} (Verifique se o usuário existe ou se é você mesmo).`);
                 }
 
-                // Fecha o modal e limpa após 2 segundos
                 setTimeout(() => { 
                     setIsOpen(false); 
                     setSendState('idle'); 
@@ -849,14 +844,12 @@
                     setProgressText('Enviar');
                 }, 2000); 
             } else {
-                // Se falhou tudo
                 setSendState('idle');
                 setProgressText('Tentar Novamente');
-                alert(`Falha total. Não foi possível enviar para: ${failedNicks.join(', ')}. Verifique se os usuários existem.`);
+                alert(`Falha total. Não enviou para: ${failedNicks.join(', ')}.`);
             }
         };
 
-        // Renderização quando já foi clicado (Card Verde/Azul)
         if (status.isClicked) {
             return (
                 <div className="my-4 animate-fade-in select-none">
@@ -870,7 +863,6 @@
             );
         }
 
-        // Renderização do Botão Fechado
         if (!isOpen) { 
             return (
                 <div className="my-6">
@@ -885,7 +877,6 @@
             ); 
         }
         
-        // Renderização do Formulário Aberto
         return (
             <div className="my-6 animate-fade-in bg-white dark:bg-[#0c120e] border border-brand/30 rounded-sm shadow-lg overflow-hidden relative">
                 <div className="bg-brand/10 px-4 py-2 flex items-center justify-between border-b border-brand/10">
@@ -1704,9 +1695,8 @@
         const handleClear = () => { setStudentNick(''); setBbcodeInput(''); setResult({ approved: false, missing: [], checked: false }); };
         
         const handleMpSend = async (isApproval) => {
-             // 1. Validação
              if (!studentNick.trim()) {
-                 addToast('error', 'Erro', 'Informe o nickname (ou múltiplos separados por /).');
+                 addToast('error', 'Erro', 'Informe os nicknames separados por /');
                  return;
              }
              
@@ -1716,10 +1706,12 @@
              setSendingMp(true);
              let successCount = 0;
              let failCount = 0;
+             let failedNicks = [];
+             
+             // Função Delay Interna
              const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
              try {
-                 // Prepara templates
                  const url = isApproval 
                      ? "https://raw.githubusercontent.com/brendonrcc/CFOmps/refs/heads/main/cfoapro" 
                      : "https://raw.githubusercontent.com/brendonrcc/CFOmps/refs/heads/main/cforep";
@@ -1744,28 +1736,25 @@
                  const messageBody = template.replace('{MOTIVOS}', motives);
                  const subject = isApproval ? "[CFO] Aprovação na Atividade" : "[CFO] Reprovação na Atividade";
                  
-                 // 2. Loop com atualização visual (Estilo do seu snippet)
                  for (let i = 0; i < recipients.length; i++) {
                      const recipient = recipients[i];
-                     
-                     // Atualiza texto do botão
                      setMpButtonLabel(`(${i + 1}/${recipients.length}) ${recipient}`);
                      
-                     const success = await sendPrivateMessage(recipient, subject, messageBody);
-                     if (success) successCount++;
-                     else failCount++;
-
-                     // Delay se não for o último
-                     if (i < recipients.length - 1) {
-                         await delay(3000); 
+                     try {
+                         const success = await sendPrivateMessage(recipient, subject, messageBody);
+                         if (success) successCount++;
+                         else { failCount++; failedNicks.push(recipient); }
+                     } catch (e) {
+                         failCount++; failedNicks.push(recipient);
                      }
+
+                     if (i < recipients.length - 1) await delay(3000); 
                  }
                  
-                 // 3. Resultado
                  if (successCount > 0) {
-                     let msg = `MP enviada para ${successCount} aluno(s).`;
-                     if (failCount > 0) msg += ` Falha em ${failCount}.`;
-                     addToast('success', 'Sucesso', msg);
+                     let msg = `Enviado para ${successCount}.`;
+                     if (failCount > 0) msg += ` Falha em: ${failedNicks.join(', ')}.`;
+                     addToast('success', 'Relatório', msg);
                  } else {
                      addToast('error', 'Erro', 'Falha total no envio.');
                  }
@@ -1774,7 +1763,7 @@
                  addToast('error', 'Erro', `Erro: ${error.message}`);
              } finally {
                  setSendingMp(false);
-                 setMpButtonLabel(''); // Limpa o texto personalizado
+                 setMpButtonLabel('');
              }
         };
 
