@@ -775,19 +775,20 @@
         const [isOpen, setIsOpen] = useState(false); 
         const [nickname, setNickname] = useState(''); 
         const [sendState, setSendState] = useState('idle'); // idle, sending, sent
-        const [progressText, setProgressText] = useState('Enviar'); // Texto dinâmico do botão
+        const [progressText, setProgressText] = useState('Enviar'); 
         const [sentRecipient, setSentRecipient] = useState(null);
 
-        // Função auxiliar de delay (igual ao seu snippet)
+        // Função de Delay para evitar Flood
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         const handleSend = async () => { 
+            // Validação básica
             if (!nickname.trim()) return; 
             
             const subject = block.content || "Mensagem do Instrutor";
             const rawMessage = block.extra || "";
 
-            // 1. Prepara a lista
+            // 1. DIVIDIR OS NICKS (Garante que separe corretamente por /)
             const recipients = nickname.split('/').map(n => n.trim()).filter(n => n.length > 0);
 
             if (recipients.length === 0) return;
@@ -795,36 +796,52 @@
             setSendState('sending'); 
             let successCount = 0;
             let failCount = 0;
+            let failedNicks = [];
 
-            // 2. Loop estilo "Formulário"
+            // 2. LOOP DE ENVIO
             for (let i = 0; i < recipients.length; i++) {
                 const recipient = recipients[i];
                 
-                // Atualiza o texto do botão: "Enviando (1/3): Nick"
-                setProgressText(`Enviando (${i + 1}/${recipients.length}): ${recipient}`);
+                // Atualiza o botão para mostrar o progresso: "Enviando (1/3): Nick..."
+                setProgressText(`(${i + 1}/${recipients.length}) ${recipient}...`);
 
-                const success = await sendPrivateMessage(recipient, subject, rawMessage);
-                
-                if (success) successCount++;
-                else failCount++;
+                try {
+                    const success = await sendPrivateMessage(recipient, subject, rawMessage);
+                    
+                    if (success) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                        failedNicks.push(recipient);
+                    }
+                } catch (error) {
+                    console.error("Erro no loop de envio:", error);
+                    failCount++;
+                    failedNicks.push(recipient);
+                }
 
-                // Delay entre envios (exceto no último)
+                // Aplica delay de 3 segundos APENAS se não for o último da lista
                 if (i < recipients.length - 1) {
-                    await delay(3000); // 3 segundos de delay (seguro contra flood)
+                    await delay(3000); 
                 }
             }
 
-            // 3. Finalização
+            // 3. FINALIZAÇÃO
             if (successCount > 0) {
                 onInteract(block.id); 
+                
+                // Mostra a lista de enviados no card verde
                 setSentRecipient(recipients.join(', '));
+                
                 setSendState('sent'); 
                 setProgressText('Concluído');
 
+                // Se houver falhas parciais, avisa quem falhou
                 if (failCount > 0) {
-                    alert(`Enviado para ${successCount}. Falha para ${failCount}.`);
+                    alert(`Enviado para ${successCount}. Falha ao enviar para: ${failedNicks.join(', ')}`);
                 }
 
+                // Fecha o modal e limpa após 2 segundos
                 setTimeout(() => { 
                     setIsOpen(false); 
                     setSendState('idle'); 
@@ -832,12 +849,14 @@
                     setProgressText('Enviar');
                 }, 2000); 
             } else {
+                // Se falhou tudo
                 setSendState('idle');
-                setProgressText('Enviar');
-                alert('Erro total no envio. Verifique usuário/flood.');
+                setProgressText('Tentar Novamente');
+                alert(`Falha total. Não foi possível enviar para: ${failedNicks.join(', ')}. Verifique se os usuários existem.`);
             }
         };
 
+        // Renderização quando já foi clicado (Card Verde/Azul)
         if (status.isClicked) {
             return (
                 <div className="my-4 animate-fade-in select-none">
@@ -851,6 +870,7 @@
             );
         }
 
+        // Renderização do Botão Fechado
         if (!isOpen) { 
             return (
                 <div className="my-6">
@@ -865,6 +885,7 @@
             ); 
         }
         
+        // Renderização do Formulário Aberto
         return (
             <div className="my-6 animate-fade-in bg-white dark:bg-[#0c120e] border border-brand/30 rounded-sm shadow-lg overflow-hidden relative">
                 <div className="bg-brand/10 px-4 py-2 flex items-center justify-between border-b border-brand/10">
@@ -876,11 +897,11 @@
                           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Users size={16} /></div>
                           <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder="NICK1 / NICK2 / NICK3" className="w-full bg-slate-100 dark:bg-dark-element pl-10 pr-4 py-3 text-sm font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 outline-none border border-slate-200 dark:border-slate-700 rounded-sm focus:border-brand focus:ring-1 focus:ring-brand font-condensed tracking-wide" autoFocus />
                       </div>
-                      <button onClick={handleSend} disabled={!nickname.trim() || sendState !== 'idle'} className="px-6 bg-brand hover:bg-brand-hover text-white rounded-sm font-bold uppercase text-xs tracking-widest disabled:opacity-50 transition-all flex items-center justify-center min-w-[140px]">
+                      <button onClick={handleSend} disabled={!nickname.trim() || sendState !== 'idle'} className="px-6 bg-brand hover:bg-brand-hover text-white rounded-sm font-bold uppercase text-xs tracking-widest disabled:opacity-50 transition-all flex items-center justify-center min-w-[150px]">
                           {sendState === 'sending' ? (
                               <div className="flex items-center gap-2">
                                   <Loader2 size={14} className="animate-spin" />
-                                  <span className="truncate max-w-[100px]">{progressText}</span>
+                                  <span className="truncate max-w-[120px]">{progressText}</span>
                               </div>
                           ) : sendState === 'sent' ? <Check size={16} /> : 'Enviar'}
                       </button>
